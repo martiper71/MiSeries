@@ -5,183 +5,109 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Buscador de Series TV</title>
-    <style>
-        /* Estilos básicos para que no se vea feo */
-        body {
-            font-family: sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f4f4f9;
-        }
-
-        .search-container {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
-        }
-
-        input {
-            flex-grow: 1;
-            padding: 10px;
-            font-size: 16px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-
-        button {
-            padding: 10px 20px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background-color: #0056b3;
-        }
-
-        /* La rejilla de resultados */
-        #results {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 20px;
-        }
-
-        .card {
-            background: white;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            transition: transform 0.2s;
-            cursor: pointer;
-        }
-
-        .card:hover {
-            transform: translateY(-5px);
-        }
-
-        .card img {
-            width: 100%;
-            height: 225px;
-            object-fit: cover;
-            background: #eee;
-        }
-
-        .card-info {
-            padding: 10px;
-        }
-
-        .card-title {
-            font-weight: bold;
-            font-size: 14px;
-            margin-bottom: 5px;
-        }
-
-        .card-year {
-            color: #666;
-            font-size: 12px;
-        }
-
-        .card-overview {
-            display: none;
-        }
-
-        /* Oculto, pero está ahí para cuando lo quieras guardar */
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-    <h1>📺 Añadir Nueva Serie</h1>
+    <!-- Pantalla de Inicio (Login / Registro / Reset) -->
+    <div id="loginOverlay">
+        <!-- Pantalla 1: LOGIN -->
+        <div id="cardLogin" class="auth-card">
+            <h2>Identifícate</h2>
+            <div class="login-field">
+                <input type="email" id="emailInput" placeholder="Tu Email">
+            </div>
+            <div class="login-field">
+                <input type="password" id="passInput" placeholder="Tu Contraseña">
+            </div>
+            <button class="btn-entrar" onclick="login()">Entrar</button>
+            <div class="login-links">
+                <p>¿No tienes cuenta? <a href="javascript:void(0)"
+                        onclick="mostrarPantalla('cardRegistro')">Regístrate</a></p>
+                <p><a href="javascript:void(0)" onclick="mostrarPantalla('cardReset')">¿Olvidaste tu contraseña?</a></p>
+            </div>
+        </div>
 
-    <div class="search-container">
-        <input type="text" id="searchInput" placeholder="Escribe el nombre de la serie (ej. The Last of Us)...">
-        <button onclick="buscarSeries()">Buscar</button>
+        <!-- Pantalla 2: REGISTRO -->
+        <div id="cardRegistro" class="auth-card hidden">
+            <h2>Regístrate</h2>
+            <div class="login-field">
+                <input type="email" id="regEmail" placeholder="Tu Email">
+            </div>
+            <div class="login-field">
+                <input type="password" id="regPass" placeholder="Tu Contraseña">
+            </div>
+            <div class="login-field">
+                <input type="password" id="regPassConfirm" placeholder="Repite Contraseña">
+            </div>
+            <button class="btn-entrar" onclick="registrarUsuario()">Crear cuenta</button>
+            <div class="login-links">
+                <p>¿Ya tienes cuenta? <a href="javascript:void(0)" onclick="mostrarPantalla('cardLogin')">Inicia
+                        sesión</a></p>
+            </div>
+        </div>
+
+        <!-- Pantalla 3: RECOBRAR CONTRASEÑA -->
+        <div id="cardReset" class="auth-card hidden">
+            <h2>Recuperar</h2>
+            <p style="color: #64748b; margin-bottom: 20px;">Te enviaremos un email para restablecer tu acceso.</p>
+            <div class="login-field">
+                <input type="email" id="resetEmail" placeholder="Tu Email">
+            </div>
+            <button class="btn-entrar" onclick="solicitarReseteo()">Enviar enlace</button>
+            <div class="login-links">
+                <p><a href="javascript:void(0)" onclick="mostrarPantalla('cardLogin')">Volver al inicio</a></p>
+            </div>
+        </div>
     </div>
 
-    <div id="results"></div>
 
+    <h1>📺 Mis Series</h1>
+
+    <div class="search-container">
+        <input type="text" id="searchInput" placeholder="Busca una serie para añadirla...">
+        <button onclick="buscarSeries()">Añadir</button>
+    </div>
+
+    <div id="searchResultsSection" class="hidden">
+        <h2 class="section-title">🔍 Resultados de búsqueda</h2>
+        <div id="results" class="results-grid" style="margin-bottom: 50px;"></div>
+    </div>
+
+    <div id="coleccionSecciones">
+        <div id="sectionPendiente" class="hidden">
+            <h2 class="section-title pendiente">⏳ Pendientes</h2>
+            <div id="gridPendiente" class="results-grid"></div>
+        </div>
+
+        <div id="sectionViendo" class="hidden">
+            <h2 class="section-title viendo">📺 Viendo</h2>
+            <div id="gridViendo" class="results-grid"></div>
+        </div>
+
+        <div id="sectionVista" class="hidden">
+            <h2 class="section-title vista">✅ Vistas</h2>
+            <div id="gridVista" class="results-grid"></div>
+        </div>
+    </div>
+
+    <!-- Vista de Detalle -->
+    <div id="detailView" class="detail-view">
+        <div class="detail-content-container">
+            <button class="back-btn" onclick="cerrarDetalle()" title="Cerrar">✕</button>
+            <div id="detailBody" class="detail-content">
+                <!-- Se llena dinámicamente -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pocketbase/0.21.1/pocketbase.umd.js"></script>
     <script src="config.js"></script>
-    <script>
-        // Usamos la API KEY del archivo config.js (que no se sube a GitHub)
-        const API_KEY = window.CONFIG.TMDB_API_KEY;
-
-        async function buscarSeries() {
-            const query = document.getElementById('searchInput').value;
-            const resultsDiv = document.getElementById('results');
-
-            if (!query) return alert("Escribe algo primero...");
-
-            // Limpiamos resultados anteriores
-            resultsDiv.innerHTML = '<p>Buscando...</p>';
-
-            try {
-                // 1. La llamada a la API (Pedimos en español 'es-ES')
-                const url = `https://api.themoviedb.org/3/search/tv?api_key=${API_KEY}&query=${encodeURIComponent(query)}&language=es-ES`;
-
-                const response = await fetch(url);
-                const data = await response.json();
-
-                resultsDiv.innerHTML = ''; // Limpiar mensaje de carga
-
-                if (data.results.length === 0) {
-                    resultsDiv.innerHTML = '<p>No se encontraron series.</p>';
-                    return;
-                }
-
-                // 2. Bucle para pintar las tarjetas
-                data.results.forEach(serie => {
-                    // Si no tiene poster, ponemos una imagen gris
-                    const poster = serie.poster_path
-                        ? `https://image.tmdb.org/t/p/w500${serie.poster_path}`
-                        : 'https://via.placeholder.com/500x750?text=No+Image';
-
-                    const year = serie.first_air_date ? serie.first_air_date.split('-')[0] : 'Sin fecha';
-
-                    // Creamos el HTML de cada tarjeta
-                    const card = document.createElement('div');
-                    card.className = 'card';
-                    card.onclick = () => seleccionarSerie(serie); // Preparamos el click para el futuro
-
-                    card.innerHTML = `
-                        <img src="${poster}" alt="${serie.name}">
-                        <div class="card-info">
-                            <div class="card-title">${serie.name}</div>
-                            <div class="card-year">${year}</div>
-                        </div>
-                    `;
-
-                    resultsDiv.appendChild(card);
-                });
-
-            } catch (error) {
-                console.error('Error:', error);
-                resultsDiv.innerHTML = '<p>Hubo un error al buscar (mira la consola).</p>';
-            }
-        }
-
-        // 3. Esta función es para que tú sigas trabajando
-        function seleccionarSerie(serie) {
-            console.log("Has seleccionado esta serie:", serie);
-            alert(`Has elegido: ${serie.name}\n(Mira la consola para ver todos los datos JSON listos para enviar a PocketBase)`);
-
-            // AQUÍ ES DONDE TÚ ENTRAS:
-            // Tienes que coger el objeto 'serie' y enviarlo a tu PocketBase
-            // const datosParaPB = {
-            //    titulo: serie.name,
-            //    sinopsis: serie.overview,
-            //    poster_url: `https://image.tmdb.org/t/p/w500${serie.poster_path}`,
-            //    ...
-            // }
-        }
-
-        // Permitir buscar pulsando Enter
-        document.getElementById('searchInput').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') buscarSeries();
-        });
-    </script>
+    <script src="app.js"></script>
 
 </body>
 
