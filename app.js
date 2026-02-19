@@ -297,20 +297,20 @@ async function mostrarDetalle(serie, esDeColeccion) {
                 <div class="seasons-container">
                     <div class="seasons-title">📂 Temporadas y Episodios</div>
                     ${seasonsOficiales.map(s => {
-                        const sKey = String(s.season_number);
-                        const seasonVistos = serieActual.vistos[sKey] || [];
-                        let epsButtons = '';
-                        for (let i = 1; i <= s.episode_count; i++) {
-                            const isWatched = seasonVistos.includes(i);
-                            epsButtons += `
+                const sKey = String(s.season_number);
+                const seasonVistos = serieActual.vistos[sKey] || [];
+                let epsButtons = '';
+                for (let i = 1; i <= s.episode_count; i++) {
+                    const isWatched = seasonVistos.includes(i);
+                    epsButtons += `
                                 <div class="episode-btn ${isWatched ? 'watched' : ''} ${!esDeColeccion ? 'disabled' : ''}"
                                      onclick="${esDeColeccion ? `marcarEpisodio(${s.season_number}, ${i}, this)` : ''}"
                                      title="Episodio ${i}">
                                     ${i}
                                 </div>`;
-                        }
+                }
 
-                        return `
+                return `
                             <div class="season-item">
                                 <div class="season-header">
                                     <span class="season-name">${s.name}</span>
@@ -319,7 +319,7 @@ async function mostrarDetalle(serie, esDeColeccion) {
                                 <div class="episodes-grid">${epsButtons}</div>
                             </div>
                         `;
-                    }).join('')}
+            }).join('')}
                 </div>
             `;
         }
@@ -327,7 +327,10 @@ async function mostrarDetalle(serie, esDeColeccion) {
         detailBody.innerHTML = `
             <img class="detail-poster" src="${poster}" alt="${titulo}">
             <div class="detail-info">
-                <div class="detail-title">${titulo}</div>
+                <div style="display: flex; justify-content: space-between; align-items: start; gap: 20px; margin-bottom: 20px;">
+                    <div class="detail-title" style="margin: 0;">${titulo}</div>
+                    ${esDeColeccion ? `<button class="btn-delete-detail" onclick="borrarSerie('${serieActual.id}', '${titulo.replace(/'/g, "\\'")}')">🗑️ Eliminar</button>` : ''}
+                </div>
                 <div class="detail-meta">
                     <span>🗓️ ${year}</span>
                     <span>⭐ <span class="rating-badge">${puntuacion}</span></span>
@@ -476,6 +479,21 @@ async function seleccionarSerie(serie) {
     } catch (error) {
         console.error('Error al guardar en PocketBase:', error);
         alert('❌ Error al guardar: ' + error.message);
+    }
+}
+
+// Función para borrar una serie de la colección
+async function borrarSerie(id, titulo) {
+    if (confirm(`¿Estás seguro de que quieres eliminar "${titulo}" de tu lista?`)) {
+        try {
+            await pb.collection(window.CONFIG.COLLECTION_NAME).delete(id);
+            document.getElementById('detailView').style.display = 'none';
+            document.body.style.overflow = 'auto';
+            cargarMisSeries();
+        } catch (error) {
+            console.error('Error al eliminar la serie:', error);
+            alert('Error al eliminar la serie: ' + error.message);
+        }
     }
 }
 

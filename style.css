@@ -311,6 +311,28 @@ button:active {
     /* Color de seguridad */
 }
 
+.btn-delete-detail {
+    background-color: var(--danger);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: fit-content;
+}
+
+.btn-delete-detail:hover {
+    background-color: #dc2626;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
 .card-info {
     padding: 15px;
     display: flex;
@@ -459,6 +481,7 @@ button:active {
 
 .detail-info {
     flex-grow: 1;
+    position: relative;
 }
 
 .detail-title {
