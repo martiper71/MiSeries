@@ -1,3 +1,12 @@
+// Registro de Service Worker para PWA
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('SW registrado', reg))
+            .catch(err => console.log('Error registrando SW', err));
+    });
+}
+
 // Usamos la API KEY del archivo config.js (que no se sube a GitHub)
 const API_KEY = window.CONFIG.TMDB_API_KEY;
 
@@ -7,6 +16,19 @@ const pb = new PocketBase(window.CONFIG.PB_URL);
 let serieActual = null; // Estado de la serie abierta
 let syncQueue = Promise.resolve(); // Cola de promesas secuencial
 let pendingRecords = 0; // Contador de peticiones activas
+let ratingSeleccionado = 0;
+
+function initStars() {
+    const stars = document.querySelectorAll('.star');
+    stars.forEach(star => {
+        star.addEventListener('click', () => {
+            ratingSeleccionado = parseInt(star.getAttribute('data-value'));
+            stars.forEach(s => {
+                s.classList.toggle('active', parseInt(s.getAttribute('data-value')) <= ratingSeleccionado);
+            });
+        });
+    });
+}
 
 function updateAuthUI() {
     const isLogged = pb.authStore.isValid && pb.authStore.model;
@@ -293,35 +315,64 @@ async function mostrarDetalle(serie, esDeColeccion) {
                 !['especiales', 'specials', 'extras', 'especial'].includes(s.name.toLowerCase())
             );
 
-            seasonsHtml = `
-                <div class="seasons-container">
-                    <div class="seasons-title">📂 Temporadas y Episodios</div>
-                    ${seasonsOficiales.map(s => {
-                const sKey = String(s.season_number);
-                const seasonVistos = serieActual.vistos[sKey] || [];
-                let epsButtons = '';
-                for (let i = 1; i <= s.episode_count; i++) {
-                    const isWatched = seasonVistos.includes(i);
-                    epsButtons += `
-                                <div class="episode-btn ${isWatched ? 'watched' : ''} ${!esDeColeccion ? 'disabled' : ''}"
-                                     onclick="${esDeColeccion ? `marcarEpisodio(${s.season_number}, ${i}, this)` : ''}"
-                                     title="Episodio ${i}">
-                                    ${i}
-                                </div>`;
-                }
-
-                return `
-                            <div class="season-item">
-                                <div class="season-header">
-                                    <span class="season-name">${s.name}</span>
-                                    <span class="episode-count">${s.episode_count} episodios</span>
-                                </div>
-                                <div class="episodes-grid">${epsButtons}</div>
+            if (esDeColeccion && serieActual.estado === 'Vista') {
+                // Vista Compacta para series ya terminadas
+                seasonsHtml = `
+                    <div class="seasons-container">
+                        <div class="seasons-title">📊 Resumen de la serie</div>
+                        <div style="margin-bottom: 20px; color: #94a3b8;">
+                            Temporadas: <strong>${seasonsOficiales.length}</strong> Episodios: <strong>${totalOficial}</strong>
+                        </div>
+                        ${serieActual.rated ? `
+                            <div class="finished-info" style="background: rgba(99, 102, 241, 0.1); border-color: var(--primary);">
+                                <div style="font-weight: 600; margin-bottom: 10px; font-size: 0.9rem; text-transform: uppercase; color: var(--primary);">Tu valoración</div>
+                                <div class="stars">${'★'.repeat(serieActual.rated)}${'☆'.repeat(5 - serieActual.rated)}</div>
+                                ${serieActual.comentarios ? `<div class="comments" style="margin-top: 10px; color: white;">"${serieActual.comentarios}"</div>` : ''}
+                                <button onclick="mostrarFinishModal()" style="margin-top: 15px; padding: 6px 12px; font-size: 0.8rem; background: transparent; border: 1px solid var(--primary); color: var(--primary);">Editar reseña</button>
                             </div>
-                        `;
-            }).join('')}
-                </div>
-            `;
+                        ` : `
+                            <button class="btn-finish-save" onclick="mostrarFinishModal()" style="width: auto;">Añadir reseña final</button>
+                        `}
+                    </div>
+                `;
+            } else {
+                // Vista Detallada (Búsqueda o serie en curso)
+                seasonsHtml = `
+                    <div class="seasons-container">
+                        <div class="seasons-title">📂 Temporadas y Episodios</div>
+                        ${seasonsOficiales.map(s => {
+                    const sKey = String(s.season_number);
+                    const seasonVistos = serieActual.vistos[sKey] || [];
+                    const isAllWatched = seasonVistos.length === s.episode_count;
+                    let epsButtons = '';
+                    for (let i = 1; i <= s.episode_count; i++) {
+                        const isWatched = seasonVistos.includes(i);
+                        epsButtons += `
+                                    <div class="episode-btn ${isWatched ? 'watched' : ''} ${!esDeColeccion ? 'disabled' : ''}"
+                                         onclick="${esDeColeccion ? `marcarEpisodio(${s.season_number}, ${i}, this)` : ''}"
+                                         title="Episodio ${i}">
+                                        ${i}
+                                    </div>`;
+                    }
+
+                    return `
+                                <div class="season-item">
+                                    <div class="season-header">
+                                        <div class="season-name-container">
+                                            <span class="season-name">${s.name}</span>
+                                            ${esDeColeccion ? `<input type="checkbox" class="season-checkbox" ${isAllWatched ? 'checked' : ''} 
+                                                                 onchange="marcarTemporada(${s.season_number}, ${s.episode_count}, this)" 
+                                                                 title="Marcar temporada completa">` : ''}
+                                        </div>
+                                        <span class="episode-count">${s.episode_count} episodios</span>
+                                    </div>
+                                    <div class="episodes-grid" id="grid-s${s.season_number}">${epsButtons}</div>
+                                </div>
+                            `;
+                }).join('')}
+                    </div>
+                `;
+            }
         }
 
         detailBody.innerHTML = `
@@ -338,6 +389,14 @@ async function mostrarDetalle(serie, esDeColeccion) {
                 </div>
                 <div class="detail-synopsis">${sinopsis}</div>
                 ${!esDeColeccion ? `<button onclick='event.stopPropagation(); seleccionarSerie(${JSON.stringify(serieActual).replace(/'/g, "&apos;")})'>＋ Añadir a mi lista</button>` : `<span class="status-badge status-${(serieActual.estado || 'pendiente').toLowerCase()}">${serieActual.estado || 'Pendiente'}</span>`}
+                
+                ${esDeColeccion && serieActual.estado !== 'Vista' && serieActual.rated ? `
+                    <div class="finished-info">
+                        <div class="stars">${'★'.repeat(serieActual.rated)}${'☆'.repeat(5 - serieActual.rated)}</div>
+                        ${serieActual.comentarios ? `<div class="comments">"${serieActual.comentarios}"</div>` : ''}
+                    </div>
+                ` : ''}
+
                 ${seasonsHtml}
             </div>
         `;
@@ -349,6 +408,104 @@ async function mostrarDetalle(serie, esDeColeccion) {
     }
 }
 
+async function marcarTemporada(seasonNum, episodeCount, checkbox) {
+    if (!serieActual || !serieActual.id) return;
+
+    try {
+        const sKey = String(seasonNum);
+        const isChecked = checkbox.checked;
+
+        // 1. Actualizar estado local
+        if (isChecked) {
+            // Todos vistos
+            serieActual.vistos[sKey] = Array.from({ length: episodeCount }, (_, i) => i + 1);
+        } else {
+            // Ninguno visto
+            serieActual.vistos[sKey] = [];
+        }
+
+        // 2. Actualizar UI de episodios
+        const grid = document.getElementById(`grid-s${seasonNum}`);
+        if (grid) {
+            const buttons = grid.querySelectorAll('.episode-btn');
+            buttons.forEach(btn => {
+                if (isChecked) btn.classList.add('watched');
+                else btn.classList.remove('watched');
+            });
+        }
+
+        // 3. Recalcular estado global de la serie
+        actualizarEstadoGlobal();
+
+        // 4. Sincronizar
+        sincronizarCambios();
+
+    } catch (error) {
+        console.error('Error al marcar temporada:', error);
+    }
+}
+
+// Función auxiliar para centralizar el recálculo del estado (Viendo, Vista, Pendiente)
+function actualizarEstadoGlobal() {
+    if (!serieActual) return;
+
+    let totalVistos = 0;
+    for (let s in serieActual.vistos) {
+        if (Array.isArray(serieActual.vistos[s])) {
+            serieActual.vistos[s] = [...new Set(serieActual.vistos[s].map(Number))];
+            totalVistos += serieActual.vistos[s].length;
+        }
+    }
+
+    let nuevoEstado = 'Pendiente';
+    const totalEpisodios = serieActual.total_episodios || 0;
+    if (totalVistos > 0) {
+        nuevoEstado = (totalVistos >= totalEpisodios) ? 'Vista' : 'Viendo';
+    }
+
+    const acabaDeTerminar = nuevoEstado === 'Vista' && serieActual.estado !== 'Vista';
+    serieActual.estado = nuevoEstado;
+
+    const statusBadge = document.querySelector('#detailBody .status-badge');
+    if (statusBadge) {
+        statusBadge.innerText = nuevoEstado.toUpperCase();
+        statusBadge.className = `status-badge status-${nuevoEstado.toLowerCase()}`;
+    }
+
+    if (acabaDeTerminar) {
+        window._acabaDeTerminar = true; // Flag temporal
+    }
+}
+
+// Función auxiliar para centralizar la sincronización con PocketBase
+function sincronizarCambios() {
+    if (!serieActual) return;
+
+    const recordId = serieActual.id;
+    const dataToSave = {
+        vistos: JSON.parse(JSON.stringify(serieActual.vistos)),
+        estado: serieActual.estado,
+        total_episodios: serieActual.total_episodios
+    };
+
+    pendingRecords++;
+    syncQueue = syncQueue.then(async () => {
+        try {
+            await pb.collection(window.CONFIG.COLLECTION_NAME).update(recordId, dataToSave);
+            mostrarAvisoGuardado();
+
+            if (window._acabaDeTerminar) {
+                window._acabaDeTerminar = false;
+                setTimeout(mostrarFinishModal, 500);
+            }
+        } catch (err) {
+            console.error("[PB] Error al guardar:", err);
+        } finally {
+            pendingRecords--;
+        }
+    });
+}
+
 async function marcarEpisodio(seasonNum, episodeNum, btnElement) {
     if (!serieActual || !serieActual.id) return;
 
@@ -358,6 +515,7 @@ async function marcarEpisodio(seasonNum, episodeNum, btnElement) {
 
         const index = serieActual.vistos[sKey].indexOf(episodeNum);
 
+        // 1. Cambio visual de episodio
         if (index > -1) {
             serieActual.vistos[sKey].splice(index, 1);
             btnElement.classList.remove('watched');
@@ -366,47 +524,22 @@ async function marcarEpisodio(seasonNum, episodeNum, btnElement) {
             btnElement.classList.add('watched');
         }
 
-        let totalVistos = 0;
-        for (let s in serieActual.vistos) {
-            if (Array.isArray(serieActual.vistos[s])) {
-                serieActual.vistos[s] = [...new Set(serieActual.vistos[s].map(Number))];
-                totalVistos += serieActual.vistos[s].length;
+        // 2. Sincronizar checkbox de la temporada
+        const checkbox = document.querySelector(`.season-item .season-checkbox[onchange*="marcarTemporada(${seasonNum},"]`);
+        if (checkbox) {
+            const match = checkbox.getAttribute('onchange').match(/marcarTemporada\(\d+,\s*(\d+),/);
+            if (match) {
+                const totalEpsTemporada = parseInt(match[1]);
+                checkbox.checked = (serieActual.vistos[sKey].length === totalEpsTemporada);
             }
         }
 
-        let nuevoEstado = 'Pendiente';
-        if (totalVistos > 0) {
-            nuevoEstado = (totalVistos >= (serieActual.total_episodios || 0)) ? 'Vista' : 'Viendo';
-        }
-        serieActual.estado = nuevoEstado;
-
-        const statusBadge = document.querySelector('#detailBody .status-badge');
-        if (statusBadge) {
-            statusBadge.innerText = nuevoEstado.toUpperCase();
-            statusBadge.className = `status-badge status-${nuevoEstado.toLowerCase()}`;
-        }
-
-        const recordId = serieActual.id;
-        const dataToSave = {
-            vistos: JSON.parse(JSON.stringify(serieActual.vistos)),
-            estado: serieActual.estado,
-            total_episodios: serieActual.total_episodios
-        };
-
-        pendingRecords++;
-        syncQueue = syncQueue.then(async () => {
-            try {
-                await pb.collection(window.CONFIG.COLLECTION_NAME).update(recordId, dataToSave);
-                mostrarAvisoGuardado();
-            } catch (err) {
-                console.error("[PB] Error al guardar:", err);
-            } finally {
-                pendingRecords--;
-            }
-        });
+        // 3. Recalcular y Sincronizar
+        actualizarEstadoGlobal();
+        sincronizarCambios();
 
     } catch (error) {
-        console.error('Error al marcar:', error);
+        console.error('Error al marcar episodio:', error);
     }
 }
 
@@ -497,8 +630,42 @@ async function borrarSerie(id, titulo) {
     }
 }
 
+// --- FUNCIONES MODAL FINALIZACIÓN ---
+function mostrarFinishModal() {
+    ratingSeleccionado = 0;
+    document.querySelectorAll('.star').forEach(s => s.classList.remove('active'));
+    document.getElementById('finishNotes').value = '';
+    document.getElementById('finishModal').style.display = 'flex';
+}
+
+function cerrarFinishModal() {
+    document.getElementById('finishModal').style.display = 'none';
+}
+
+async function guardarFinalizacion() {
+    if (!serieActual || !serieActual.id) return;
+
+    const notas = document.getElementById('finishNotes').value;
+    const data = {
+        rated: ratingSeleccionado,
+        comentarios: notas
+    };
+
+    try {
+        await pb.collection(window.CONFIG.COLLECTION_NAME).update(serieActual.id, data);
+        serieActual.rated = ratingSeleccionado;
+        serieActual.comentarios = notas;
+        cerrarFinishModal();
+        mostrarDetalle(serieActual, true); // Refrescar detalle
+        cargarMisSeries(); // Refrescar grids
+    } catch (e) {
+        alert("Error al guardar valoración: " + e.message);
+    }
+}
+
 // Ejecutar al cargar
 updateAuthUI();
+initStars();
 
 // Permitir buscar pulsando Enter
 document.getElementById('searchInput').addEventListener('keypress', function (e) {

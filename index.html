@@ -4,7 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscador de Series TV</title>
+    <title>MisSeries</title>
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <link rel="apple-touch-icon" href="icono.png">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -66,6 +71,10 @@
     </div>
 
 
+    <button class="btn-logout" onclick="logout()">
+        <span>🚪</span> Cerrar sesión
+    </button>
+
     <h1>📺 Mis Series</h1>
 
     <div class="search-container">
@@ -102,6 +111,29 @@
             <div id="detailBody" class="detail-content">
                 <!-- Se llena dinámicamente -->
             </div>
+        </div>
+    </div>
+
+    <!-- Modal Serie Finalizada -->
+    <div id="finishModal">
+        <div class="finish-card">
+            <h2>🏆 ¡Serie Finalizada!</h2>
+            <p>¿Qué te ha parecido? Puntúala y añade tus notas finales.</p>
+
+            <div class="stars-container" id="starsContainer">
+                <span class="star" data-value="1">★</span>
+                <span class="star" data-value="2">★</span>
+                <span class="star" data-value="3">★</span>
+                <span class="star" data-value="4">★</span>
+                <span class="star" data-value="5">★</span>
+            </div>
+
+            <textarea class="notes-area" id="finishNotes"
+                placeholder="Añade tus comentarios sobre la serie..."></textarea>
+
+            <button class="btn-entrar btn-finish-save" onclick="guardarFinalizacion()">Guardar y finalizar</button>
+            <button class="btn-secundario" style="width: 100%;" onclick="cerrarFinishModal()">Cerrar sin
+                guardar</button>
         </div>
     </div>
 

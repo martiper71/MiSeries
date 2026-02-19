@@ -82,6 +82,34 @@ h1 {
     color: #22c55e;
 }
 
+.btn-logout {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(255, 255, 255, 0.8);
+    color: #64748b;
+    padding: 8px 16px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border: 1px solid #e2e8f0;
+    cursor: pointer;
+    transition: all 0.2s;
+    backdrop-filter: blur(8px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.btn-logout:hover {
+    background: #fee2e2;
+    color: #ef4444;
+    border-color: #fecaca;
+    transform: translateY(-2px);
+}
+
 .search-container {
     display: flex;
     gap: 12px;
@@ -585,6 +613,21 @@ button:active {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 15px;
+}
+
+.season-name-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.season-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: var(--primary);
+    border-radius: 4px;
 }
 
 .episodes-grid {
@@ -624,4 +667,109 @@ button:active {
 .episode-btn.disabled {
     cursor: default;
     opacity: 0.5;
+}
+
+/* Modal de Finalización */
+#finishModal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(11, 18, 33, 0.95);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 3000;
+    backdrop-filter: blur(10px);
+}
+
+.finish-card {
+    background: white;
+    padding: 40px;
+    border-radius: 24px;
+    width: 90%;
+    max-width: 500px;
+    text-align: center;
+    color: var(--text-main);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+    animation: fadeIn 0.3s ease-out;
+}
+
+.finish-card h2 {
+    font-size: 2rem;
+    margin-bottom: 10px;
+    color: var(--primary);
+}
+
+.finish-card p {
+    color: var(--text-muted);
+    margin-bottom: 25px;
+}
+
+.stars-container {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 25px;
+    font-size: 2rem;
+}
+
+.star {
+    cursor: pointer;
+    color: #e2e8f0;
+    transition: all 0.2s;
+}
+
+.star.active {
+    color: #eab308;
+    transform: scale(1.1);
+}
+
+.notes-area {
+    width: 100%;
+    height: 120px;
+    padding: 15px;
+    border-radius: 12px;
+    border: 1.5px solid #e2e8f0;
+    background: #f8fafc;
+    font-family: inherit;
+    font-size: 1rem;
+    resize: none;
+    margin-bottom: 25px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.notes-area:focus {
+    border-color: var(--primary);
+    background: white;
+}
+
+.btn-finish-save {
+    width: 100%;
+    background: var(--success) !important;
+    padding: 16px !important;
+    font-size: 1.1rem !important;
+    justify-content: center;
+}
+
+.finished-info {
+    margin-top: 20px;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    border-left: 4px solid var(--success);
+}
+
+.finished-info .stars {
+    color: #eab308;
+    font-size: 1.2rem;
+    margin-bottom: 8px;
+}
+
+.finished-info .comments {
+    font-style: italic;
+    color: #cbd5e1;
+    font-size: 0.95rem;
 }
