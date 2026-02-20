@@ -285,9 +285,18 @@ async function cargarMisSeries() {
             card.className = 'card';
             card.onclick = () => mostrarDetalle(serie, true);
 
+            // Calcular porcentaje para la barra de progreso
+            const total = serie.total_episodios || 0;
+            const porcentaje = total > 0 ? Math.min((epsDeEstaSerie / total) * 100, 100) : 0;
+
             card.innerHTML = `
                 ${tmdbStatusText ? `<div class="card-tmdb-status tmdb-status-${tmdbClass}">${tmdbStatusText}</div>` : ''}
                 <img src="${serie.poster_url || 'https://via.placeholder.com/500x750?text=No+Image'}" alt="${serie.titulo}">
+                ${estado === 'Viendo' ? `
+                    <div class="card-progress" title="${epsDeEstaSerie} de ${total} episodios vistos">
+                        <div class="card-progress-fill" style="width: ${porcentaje}%"></div>
+                    </div>
+                ` : ''}
                 <div class="card-info">
                     <div class="card-title">${serie.titulo}</div>
                     <div class="card-year">
