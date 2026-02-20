@@ -1,9 +1,17 @@
-// Registro de Service Worker para PWA
+// Registro de Service Worker para PWA con detección de actualizaciones
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('SW registrado', reg))
-            .catch(err => console.log('Error registrando SW', err));
+        navigator.serviceWorker.register('./sw.js').then(reg => {
+            reg.addEventListener('updatefound', () => {
+                const newWorker = reg.installing;
+                newWorker.addEventListener('statechange', () => {
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        // Hay una nueva versión instalada y lista
+                        document.getElementById('updateBanner').classList.remove('hidden');
+                    }
+                });
+            });
+        });
     });
 }
 
@@ -12,6 +20,7 @@ const API_KEY = window.CONFIG.TMDB_API_KEY;
 
 // Inicializar PocketBase
 const pb = new PocketBase(window.CONFIG.PB_URL);
+pb.autoCancellation(false); // Desactivar auto-cancelado para evitar errores de peticiones simultáneas
 
 let serieActual = null; // Estado de la serie abierta
 let syncQueue = Promise.resolve(); // Cola de promesas secuencial
@@ -50,11 +59,25 @@ function updateAuthUI() {
 async function login() {
     const email = document.getElementById('emailInput').value;
     const pass = document.getElementById('passInput').value;
+    const btn = document.getElementById('btnLogin');
+    const loading = document.getElementById('loginLoading');
+
+    if (!email || !pass) return;
+
+    // Mostrar estado de carga
+    btn.disabled = true;
+    btn.innerText = "Iniciando sesión...";
+    loading.classList.remove('hidden');
+
     try {
         await pb.collection('users').authWithPassword(email, pass);
         updateAuthUI();
     } catch (e) {
         alert("Error: " + e.message);
+        // Restaurar estado si falla
+        btn.disabled = false;
+        btn.innerText = "Entrar";
+        loading.classList.add('hidden');
     }
 }
 
@@ -77,11 +100,18 @@ async function registrarUsuario() {
     const email = document.getElementById('regEmail').value;
     const pass = document.getElementById('regPass').value;
     const confirm = document.getElementById('regPassConfirm').value;
+    const btn = document.getElementById('btnRegistro');
+    const loading = document.getElementById('regLoading');
 
     if (!email || !pass || pass !== confirm) {
         alert("Por favor, rellena todos los campos correctamente.");
         return;
     }
+
+    // Mostrar estado de carga
+    btn.disabled = true;
+    btn.innerText = "Procesando...";
+    loading.classList.remove('hidden');
 
     try {
         await pb.collection('users').create({
@@ -94,6 +124,11 @@ async function registrarUsuario() {
         mostrarPantalla('cardLogin');
     } catch (e) {
         alert("Error al registrar: " + e.message);
+    } finally {
+        // Restaurar estado
+        btn.disabled = false;
+        btn.innerText = "Crear cuenta";
+        loading.classList.add('hidden');
     }
 }
 
@@ -187,15 +222,30 @@ async function cargarMisSeries() {
             sort: '-updated',
         });
 
-        if (records.length === 0) return;
+        if (records.length === 0) {
+            document.getElementById('statsContainer').classList.add('hidden');
+            return;
+        }
+
+        let totalEpisodiosVistos = 0;
+        let totalCompletadas = 0;
 
         records.forEach(serie => {
+            // Calcular episodios vistos de esta serie
+            for (let s in serie.vistos) {
+                if (Array.isArray(serie.vistos[s])) {
+                    totalEpisodiosVistos += serie.vistos[s].length;
+                }
+            }
+            if (serie.estado === 'Vista') totalCompletadas++;
+
             const year = serie.fecha_estreno ? serie.fecha_estreno.split('-')[0] : 'Sin fecha';
             const estado = serie.estado || 'Pendiente';
             const statusClass = 'status-' + estado.toLowerCase().replace(' ', '').replace('í', 'i');
 
-            const tmdbStatusText = serie.tmdb_status || '';
-            let tmdbClass = 'ended';
+            const tmdbStatusText = (serie.estado === 'Vista' || serie.tmdb_status === 'Finalizada') ? 'FINALIZADA' : (serie.tmdb_status || '');
+            let tmdbClass = (serie.estado === 'Vista' || serie.tmdb_status === 'Finalizada') ? 'ended' : 'ended';
+
             if (tmdbStatusText === 'En Emisión') tmdbClass = 'returning';
             if (tmdbStatusText === 'En Producción' || tmdbStatusText === 'Planificada') tmdbClass = 'production';
             if (tmdbStatusText === 'Cancelada') tmdbClass = 'canceled';
@@ -203,6 +253,7 @@ async function cargarMisSeries() {
             const card = document.createElement('div');
             card.className = 'card';
             card.onclick = () => mostrarDetalle(serie, true);
+
             card.innerHTML = `
                 ${tmdbStatusText ? `<div class="card-tmdb-status tmdb-status-${tmdbClass}">${tmdbStatusText}</div>` : ''}
                 <img src="${serie.poster_url || 'https://via.placeholder.com/500x750?text=No+Image'}" alt="${serie.titulo}">
@@ -230,9 +281,144 @@ async function cargarMisSeries() {
                 gridVista.parentElement.classList.remove('hidden');
             }
         });
+
+        // Actualizar Estadísticas
+        document.getElementById('statSeries').innerText = records.length;
+        document.getElementById('statEpisodios').innerText = totalEpisodiosVistos;
+        document.getElementById('statVistas').innerText = totalCompletadas;
+
+        let mensaje = "";
+        if (totalEpisodiosVistos > 500) mensaje = "🏆 ¡Eres un auténtico <strong>Maestro de las Series</strong>! Tu maratón es legendario.";
+        else if (totalEpisodiosVistos > 100) mensaje = "🍿 ¡Vas por muy buen camino! Ese historial ya impone.";
+        else if (totalEpisodiosVistos > 0) mensaje = "📺 ¡Buen comienzo! Tu colección va tomando forma.";
+        else mensaje = "✨ ¡Añade tu primera serie para empezar tu maratón!";
+
+        document.getElementById('statsMessage').innerHTML = mensaje;
+        document.getElementById('statsContainer').classList.remove('hidden');
+
+        // Disparar verificación de novedades en segundo plano (solo una vez por carga de página)
+        if (!updateCheckDone) {
+            updateCheckDone = true;
+            setTimeout(() => verificarNovedades(records), 5000);
+        }
+
     } catch (error) {
         console.error('Error al cargar series:', error);
     }
+}
+
+let verificandoNovedades = false;
+let updateCheckDone = false;
+
+// Función para verificar si hay nuevos episodios o cambios de estado en TMDB
+async function verificarNovedades(series) {
+    if (verificandoNovedades || !series || series.length === 0) return;
+    verificandoNovedades = true;
+
+    // Verificamos todas las series que no estén ya marcadas como Finalizadas/Canceladas en TMDB
+    // o que tengan episodios pendientes de emitir.
+    const seriesAVerificar = series.filter(s =>
+        s.tmdb_status !== 'Finalizada' &&
+        s.tmdb_status !== 'Cancelada'
+    );
+
+    let cambiosDetectados = false;
+
+    for (const serie of seriesAVerificar) {
+        try {
+            // Añadimos cache-buster para asegurar datos frescos de la API
+            const res = await fetch(`https://api.themoviedb.org/3/tv/${serie.tmdb_id}?api_key=${API_KEY}&language=es-ES&t=${Date.now()}`);
+            const fullData = await res.json();
+
+            // 3. Traducir estado de TMDB (Mapeo ultra-exhaustivo)
+            const statusMap = {
+                'Returning Series': 'En Emisión',
+                'Ended': 'Finalizada',
+                'Canceled': 'Cancelada',
+                'Cancelled': 'Cancelada',
+                'In Production': 'En Producción',
+                'Planned': 'Planificada',
+                'Pilot': 'Piloto',
+                'Released': 'Finalizada',
+                'Post Production': 'En Producción'
+            };
+            const rawStatus = fullData.status;
+            const currentTmdbStatus = statusMap[rawStatus] || rawStatus;
+
+            console.log(`[Sync] Verificando "${serie.titulo}" (ID: ${serie.tmdb_id}). API Status: "${rawStatus}" -> "${currentTmdbStatus}"`);
+
+            // 4. Calcular episodios: Si está finalizada usamos el dato directo para ahorrar tráfico
+            let totalAired = serie.total_episodios;
+            if (rawStatus === 'Ended' || rawStatus === 'Canceled' || rawStatus === 'Cancelled' || rawStatus === 'Released') {
+                totalAired = fullData.number_of_episodes || totalAired;
+            } else {
+                totalAired = await obtenerTotalEpisodios(fullData.seasons, serie.tmdb_id);
+            }
+
+            let totalVistos = 0;
+            for (let s in serie.vistos) {
+                if (Array.isArray(serie.vistos[s])) totalVistos += serie.vistos[s].length;
+            }
+
+            let nuevoEstadoInterno = serie.estado;
+            if (totalVistos >= totalAired && totalAired > 0) {
+                // Si ha visto todo y TMDB dice que terminó O el usuario ya la marcó como Vista, se queda en Vista
+                if (currentTmdbStatus === 'Finalizada' || currentTmdbStatus === 'Cancelada' || serie.estado === 'Vista') {
+                    nuevoEstadoInterno = 'Vista';
+                } else {
+                    nuevoEstadoInterno = 'Al día';
+                }
+            } else if (totalVistos > 0) {
+                nuevoEstadoInterno = 'Viendo';
+            } else {
+                nuevoEstadoInterno = 'Pendiente';
+            }
+
+            // 5. Si hay cambios reales, actualizamos PocketBase
+            if (nuevoEstadoInterno !== serie.estado || totalAired !== serie.total_episodios || currentTmdbStatus !== serie.tmdb_status) {
+                const pasaAVista = nuevoEstadoInterno === 'Vista' && serie.estado !== 'Vista';
+
+                console.log(`[Sync] Actualizando ${serie.titulo}: ${serie.estado} -> ${nuevoEstadoInterno}`);
+                // PROTECCIÓN: Si el usuario ha forzado "Finalizada", no dejamos que la API la devuelva a "En Emisión"
+                let finalTmdbStatus = currentTmdbStatus;
+                if (serie.tmdb_status === 'Finalizada' && currentTmdbStatus === 'En Emisión') {
+                    finalTmdbStatus = 'Finalizada';
+                }
+
+                await pb.collection(window.CONFIG.COLLECTION_NAME).update(serie.id, {
+                    estado: nuevoEstadoInterno,
+                    total_episodios: totalAired,
+                    tmdb_status: finalTmdbStatus
+                });
+
+                if (pasaAVista) {
+                    // Si la serie ha finalizado, avisamos al usuario y pedimos valoración
+                    serieActual = serie; // Asignamos como actual para el modal
+                    serieActual.estado = 'Vista';
+                    alert(`🎊 ¡"${serie.titulo}" ha sido ${currentTmdbStatus.toLowerCase()}! La hemos movido a tu lista de completadas.`);
+                    mostrarFinishModal();
+                    cambiosDetectados = true;
+                    // Detenemos la verificación de más series para que el usuario pueda valorar esta
+                    verificandoNovedades = false;
+                    return;
+                }
+
+                cambiosDetectados = true;
+            }
+
+            // Esperar un poco entre peticiones para no saturar
+            await new Promise(r => setTimeout(r, 300));
+
+        } catch (err) {
+            console.error(`Error verificando novedades para ${serie.titulo}:`, err);
+        }
+    }
+
+    if (cambiosDetectados) {
+        cargarMisSeries(); // Recargar UI para mostrar los nuevos estados
+    }
+
+    verificandoNovedades = false;
 }
 
 async function buscarSeries() {
@@ -246,6 +432,13 @@ async function buscarSeries() {
     resultsDiv.innerHTML = '<p style="text-align:center; grid-column: 1/-1;">Buscando...</p>';
 
     try {
+        // Obtener IDs de las series que ya tiene el usuario para marcarlas en el buscador
+        const misSeries = await pb.collection(window.CONFIG.COLLECTION_NAME).getFullList({
+            filter: `user = "${pb.authStore.model.id}"`,
+            fields: 'tmdb_id'
+        });
+        const idsEnColeccion = new Set(misSeries.map(s => String(s.tmdb_id)));
+
         const url = `https://api.themoviedb.org/3/search/tv?api_key=${API_KEY}&query=${encodeURIComponent(query)}&language=es-ES`;
         const response = await fetch(url);
         const data = await response.json();
@@ -258,6 +451,7 @@ async function buscarSeries() {
         }
 
         data.results.forEach(serie => {
+            const yaEnLista = idsEnColeccion.has(String(serie.id));
             const poster = serie.poster_path
                 ? `https://image.tmdb.org/t/p/w500${serie.poster_path}`
                 : 'https://via.placeholder.com/500x750?text=No+Image';
@@ -266,9 +460,11 @@ async function buscarSeries() {
 
             const card = document.createElement('div');
             card.className = 'card';
-            card.onclick = () => mostrarDetalle(serie, false);
+            // Si ya está en la lista, pasamos 'true' para que se abra el detalle completo
+            card.onclick = () => mostrarDetalle(serie, yaEnLista);
 
             card.innerHTML = `
+                ${yaEnLista ? '<div class="card-tmdb-status tmdb-status-returning" style="background: #6366f1; color: white;">EN TU LISTA</div>' : ''}
                 <img src="${poster}" alt="${serie.name}">
                 <div class="card-info">
                     <div class="card-title">${serie.name}</div>
@@ -288,6 +484,24 @@ async function buscarSeries() {
 async function mostrarDetalle(serie, esDeColeccion) {
     const detailView = document.getElementById('detailView');
     const detailBody = document.getElementById('detailBody');
+
+    // Si no tenemos un ID de PocketBase (es un objeto de TMDB), 
+    // intentamos buscar si ya existe en nuestra colección para mostrar la ficha de seguimiento
+    if (!serie.collectionId) {
+        try {
+            const tmdbId = serie.id || serie.tmdb_id;
+            const existe = await pb.collection(window.CONFIG.COLLECTION_NAME).getList(1, 1, {
+                filter: `user = "${pb.authStore.model.id}" && tmdb_id = "${tmdbId}"`
+            });
+
+            if (existe.totalItems > 0) {
+                serie = existe.items[0];
+                esDeColeccion = true;
+            }
+        } catch (e) {
+            console.error("Error al verificar pertenencia a la colección:", e);
+        }
+    }
 
     serieActual = JSON.parse(JSON.stringify(serie));
     if (!serieActual.vistos) serieActual.vistos = {};
@@ -325,20 +539,28 @@ async function mostrarDetalle(serie, esDeColeccion) {
             'Returning Series': { text: 'En Emisión', class: 'returning' },
             'Ended': { text: 'Finalizada', class: 'ended' },
             'Canceled': { text: 'Cancelada', class: 'canceled' },
+            'Cancelled': { text: 'Cancelada', class: 'canceled' },
+            'Released': { text: 'Finalizada', class: 'ended' },
             'In Production': { text: 'En Producción', class: 'production' },
             'Planned': { text: 'Planificada', class: 'production' },
-            'Pilot': { text: 'Piloto', class: 'production' }
+            'Pilot': { text: 'Piloto', class: 'production' },
+            'Post Production': { text: 'En Producción', class: 'production' }
         };
         const tmdbStatus = statusMap[fullData.status] || { text: fullData.status, class: 'ended' };
 
         if (esDeColeccion && serieActual.id && serieActual.tmdb_status !== tmdbStatus.text) {
-            pb.collection(window.CONFIG.COLLECTION_NAME).update(serieActual.id, {
-                tmdb_status: tmdbStatus.text
-            }).catch(e => console.error("Error actualizando tmdb_status:", e));
+            // PROTECCIÓN: Si el usuario ha forzado "Finalizada", no dejamos que la API la devuelva a "En Emisión"
+            if (serieActual.tmdb_status === 'Finalizada' && tmdbStatus.text === 'En Emisión') {
+                console.log("[Sync] Respetando estado manual 'Finalizada' frente a API 'En Emisión'");
+            } else {
+                pb.collection(window.CONFIG.COLLECTION_NAME).update(serieActual.id, {
+                    tmdb_status: tmdbStatus.text
+                }).catch(e => console.error("Error actualizando tmdb_status:", e));
+            }
         }
 
         let seasonsHtml = '';
-        if (fullData.seasons && fullData.seasons.length > 0) {
+        if (esDeColeccion && fullData.seasons && fullData.seasons.length > 0) {
             const seasonsOficiales = fullData.seasons.filter(s =>
                 s.season_number > 0 &&
                 !['especiales', 'specials', 'extras', 'especial'].includes(s.name.toLowerCase())
@@ -438,6 +660,12 @@ async function mostrarDetalle(serie, esDeColeccion) {
                     <span>🗓️ ${year}</span>
                     <span>⭐ <span class="rating-badge">${puntuacion}</span></span>
                     <span class="tmdb-status-badge tmdb-status-${tmdbStatus.class}">${tmdbStatus.text}</span>
+                    ${esDeColeccion ? (
+                serieActual.tmdb_status === 'Finalizada' && fullData.status === 'Returning Series' ?
+                    `<a href="javascript:void(0)" onclick="revertirFinalizacion()" class="force-end-link" style="color: #ef4444;">¿No ha finalizado?</a>` :
+                    (tmdbStatus.text !== 'Finalizada' && tmdbStatus.text !== 'Cancelada' ?
+                        `<a href="javascript:void(0)" onclick="forzarFinalizacion()" class="force-end-link">¿Ha finalizado?</a>` : '')
+            ) : ''}
                 </div>
                 <div class="detail-synopsis">${sinopsis}</div>
                 ${!esDeColeccion ?
@@ -629,6 +857,74 @@ async function cerrarDetalle() {
 
     await cargarMisSeries();
     serieActual = null;
+
+    // Limpiar buscador y resultados
+    document.getElementById('searchResultsSection').classList.add('hidden');
+    document.getElementById('searchInput').value = '';
+    document.getElementById('results').innerHTML = '';
+}
+
+
+
+// Función para forzar manualmente el estado de finalizada si TMDB falla
+async function forzarFinalizacion() {
+    if (!serieActual || !serieActual.id) return;
+
+    const titulo = serieActual.titulo || serieActual.name;
+    if (confirm(`¿Quieres marcar "${titulo}" como Finalizada manualmente? Se moverá a tu lista de completadas.`)) {
+        try {
+            // 1. Actualizar estado local
+            serieActual.tmdb_status = 'Finalizada';
+            serieActual.estado = 'Vista';
+
+            // 2. Guardar en PocketBase
+            await pb.collection(window.CONFIG.COLLECTION_NAME).update(serieActual.id, {
+                tmdb_status: 'Finalizada',
+                estado: 'Vista',
+                total_episodios: serieActual.total_episodios
+            });
+
+            // 3. Abrir modal de valoración
+            mostrarFinishModal();
+
+            // 4. Refrescar el detalle y los grids
+            mostrarDetalle(serieActual, true);
+            cargarMisSeries();
+
+        } catch (error) {
+            console.error("Error al forzar finalización:", error);
+            alert("Error al actualizar la serie: " + error.message);
+        }
+    }
+}
+
+// Función para revertir la finalización manual y dejar que TMDB mande de nuevo
+async function revertirFinalizacion() {
+    if (!serieActual || !serieActual.id) return;
+
+    const titulo = serieActual.titulo || serieActual.name;
+    if (confirm(`¿Quieres reactivar "${titulo}"? Volverá a usar el estado oficial de TMDB.`)) {
+        try {
+            // Ponemos un estado temporal para que el sistema de sincronización lo recoja
+            // O mejor, lo forzamos nosotros ahora mismo
+            const response = await fetch(`https://api.themoviedb.org/3/tv/${serieActual.tmdb_id}?api_key=${API_KEY}&language=es-ES`);
+            const fullData = await response.json();
+
+            // Forzamos que se comporte como una serie en emisión
+            await pb.collection(window.CONFIG.COLLECTION_NAME).update(serieActual.id, {
+                tmdb_status: 'En Emisión',
+                estado: 'Al día'
+            });
+
+            alert(`✅ "${titulo}" reactivada. Se ha movido a tu lista de "Al día".`);
+
+            // Refrescar todo
+            cerrarDetalle();
+        } catch (error) {
+            console.error("Error al revertir finalización:", error);
+            alert("Error al actualizar: " + error.message);
+        }
+    }
 }
 
 async function seleccionarSerie(serie) {
@@ -667,6 +963,8 @@ async function seleccionarSerie(serie) {
             'Returning Series': { text: 'En Emisión' },
             'Ended': { text: 'Finalizada' },
             'Canceled': { text: 'Cancelada' },
+            'Cancelled': { text: 'Cancelada' },
+            'Released': { text: 'Finalizada' },
             'In Production': { text: 'En Producción' },
             'Planned': { text: 'Planificada' },
             'Pilot': { text: 'Piloto' }
@@ -695,7 +993,6 @@ async function seleccionarSerie(serie) {
         document.getElementById('results').innerHTML = '';
 
         cerrarDetalle();
-        cargarMisSeries();
     } catch (error) {
         console.error('Error al guardar en PocketBase:', error);
         alert('❌ Error al guardar: ' + error.message);

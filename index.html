@@ -9,6 +9,8 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#6366f1">
     <link rel="apple-touch-icon" href="icono.png">
+    <link rel="icon" type="image/png" href="icono.png">
+    <link rel="shortcut icon" href="icono.png">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,7 +31,11 @@
             <div class="login-field">
                 <input type="password" id="passInput" placeholder="Tu Contraseña">
             </div>
-            <button class="btn-entrar" onclick="login()">Entrar</button>
+            <button class="btn-entrar" id="btnLogin" onclick="login()">Entrar</button>
+            <div id="loginLoading" class="login-loading hidden">
+                <div class="spinner"></div>
+                <span>Verificando credenciales...</span>
+            </div>
             <div class="login-links">
                 <p>¿No tienes cuenta? <a href="javascript:void(0)"
                         onclick="mostrarPantalla('cardRegistro')">Regístrate</a></p>
@@ -49,7 +55,11 @@
             <div class="login-field">
                 <input type="password" id="regPassConfirm" placeholder="Repite Contraseña">
             </div>
-            <button class="btn-entrar" onclick="registrarUsuario()">Crear cuenta</button>
+            <button class="btn-entrar" id="btnRegistro" onclick="registrarUsuario()">Crear cuenta</button>
+            <div id="regLoading" class="login-loading hidden">
+                <div class="spinner"></div>
+                <span>Creando tu espacio...</span>
+            </div>
             <div class="login-links">
                 <p>¿Ya tienes cuenta? <a href="javascript:void(0)" onclick="mostrarPantalla('cardLogin')">Inicia
                         sesión</a></p>
@@ -75,11 +85,36 @@
         <span>🚪</span> Cerrar sesión
     </button>
 
-    <h1>📺 Mis Series</h1>
+    <!-- Aviso de Actualización PWA -->
+    <div id="updateBanner" class="update-banner hidden">
+        <span>✨ Nueva versión disponible</span>
+        <button onclick="window.location.reload(true)">Actualizar ahora</button>
+    </div>
+
+    <h1>📺 MisSeries</h1>
+
+    <!-- Sección de Estadísticas -->
+    <div id="statsContainer" class="stats-container hidden">
+        <div class="stats-grid">
+            <div class="stat-item">
+                <span class="stat-value" id="statSeries">0</span>
+                <span class="stat-label">Series</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value" id="statEpisodios">0</span>
+                <span class="stat-label">Episodios vistos</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value" id="statVistas">0</span>
+                <span class="stat-label">Completadas</span>
+            </div>
+        </div>
+        <div id="statsMessage" class="stats-message"></div>
+    </div>
 
     <div class="search-container">
-        <input type="text" id="searchInput" placeholder="Busca una serie para añadirla...">
-        <button onclick="buscarSeries()">Añadir</button>
+        <input type="text" id="searchInput" placeholder="Buscar o añadir una serie">
+        <button onclick="buscarSeries()">Buscar</button>
     </div>
 
     <div id="searchResultsSection" class="hidden">
