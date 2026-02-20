@@ -85,11 +85,6 @@
         <span>🚪</span> Cerrar sesión
     </button>
 
-    <!-- Aviso de Actualización PWA -->
-    <div id="updateBanner" class="update-banner hidden">
-        <span>✨ Nueva versión disponible</span>
-        <button onclick="window.location.reload(true)">Actualizar ahora</button>
-    </div>
 
     <h1>📺 MisSeries</h1>
 
@@ -106,7 +101,11 @@
             </div>
             <div class="stat-item">
                 <span class="stat-value" id="statVistas">0</span>
-                <span class="stat-label">Completadas</span>
+                <span class="stat-label">Terminadas</span>
+            </div>
+            <div class="stat-item" title="Tiempo total viendo series">
+                <span class="stat-value" id="statTiempo">0h</span>
+                <span class="stat-label">Tiempo</span>
             </div>
         </div>
         <div id="statsMessage" class="stats-message"></div>

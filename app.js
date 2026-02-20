@@ -1,17 +1,7 @@
-// Registro de Service Worker para PWA con detección de actualizaciones
+// Registro de Service Worker para PWA
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').then(reg => {
-            reg.addEventListener('updatefound', () => {
-                const newWorker = reg.installing;
-                newWorker.addEventListener('statechange', () => {
-                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                        // Hay una nueva versión instalada y lista
-                        document.getElementById('updateBanner').classList.remove('hidden');
-                    }
-                });
-            });
-        });
+        navigator.serviceWorker.register('./sw.js').catch(err => console.log("SW registration failed: ", err));
     });
 }
 
@@ -81,9 +71,34 @@ async function login() {
     }
 }
 
-function logout() {
+async function logout() {
     pb.authStore.clear();
-    updateAuthUI();
+
+    // Limpiar Cachés de la PWA/Navegador para forzar actualización
+    if ('caches' in window) {
+        try {
+            const cacheNames = await caches.keys();
+            await Promise.all(cacheNames.map(name => caches.delete(name)));
+            console.log("[PWA] Caché eliminada satisfactoriamente");
+        } catch (e) {
+            console.error("[PWA] Error al limpiar caché:", e);
+        }
+    }
+
+    // Desvincular Service Workers (si existen) para asegurar carga fresca
+    if ('serviceWorker' in navigator) {
+        try {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (let registration of registrations) {
+                await registration.unregister();
+            }
+        } catch (e) {
+            console.error("[PWA] Error al desincorporar Service Worker:", e);
+        }
+    }
+
+    // Forzar recarga completa desde el servidor (evitando caché de disco)
+    window.location.reload(true);
 }
 
 // --- GESTIÓN DE PANTALLAS DE AUTENTICACIÓN ---
@@ -229,14 +244,30 @@ async function cargarMisSeries() {
 
         let totalEpisodiosVistos = 0;
         let totalCompletadas = 0;
+        let totalMinutos = 0;
+        const mapaGeneros = {};
 
         records.forEach(serie => {
             // Calcular episodios vistos de esta serie
+            let epsDeEstaSerie = 0;
             for (let s in serie.vistos) {
                 if (Array.isArray(serie.vistos[s])) {
-                    totalEpisodiosVistos += serie.vistos[s].length;
+                    epsDeEstaSerie += serie.vistos[s].length;
                 }
             }
+            totalEpisodiosVistos += epsDeEstaSerie;
+
+            // Tiempo invertido
+            const duracion = serie.duracion_media || 45;
+            totalMinutos += (epsDeEstaSerie * duracion);
+
+            // Contar géneros
+            if (serie.generos) {
+                serie.generos.split(', ').forEach(g => {
+                    mapaGeneros[g] = (mapaGeneros[g] || 0) + 1;
+                });
+            }
+
             if (serie.estado === 'Vista') totalCompletadas++;
 
             const year = serie.fecha_estreno ? serie.fecha_estreno.split('-')[0] : 'Sin fecha';
@@ -287,11 +318,31 @@ async function cargarMisSeries() {
         document.getElementById('statEpisodios').innerText = totalEpisodiosVistos;
         document.getElementById('statVistas').innerText = totalCompletadas;
 
+        // Formatear Tiempo (Días y Horas para más claridad)
+        const horasTotales = Math.floor(totalMinutos / 60);
+        const dias = Math.floor(horasTotales / 24);
+        const horasRestantes = horasTotales % 24;
+
+        if (dias > 0) {
+            document.getElementById('statTiempo').innerText = `${dias}d ${horasRestantes}h`;
+        } else {
+            document.getElementById('statTiempo').innerText = `${horasTotales}h`;
+        }
+
+        // Género Top
+        const generosSorted = Object.entries(mapaGeneros).sort((a, b) => b[1] - a[1]);
+        const topGenero = generosSorted.length > 0 ? generosSorted[0][0] : '-';
+
         let mensaje = "";
-        if (totalEpisodiosVistos > 500) mensaje = "🏆 ¡Eres un auténtico <strong>Maestro de las Series</strong>! Tu maratón es legendario.";
-        else if (totalEpisodiosVistos > 100) mensaje = "🍿 ¡Vas por muy buen camino! Ese historial ya impone.";
-        else if (totalEpisodiosVistos > 0) mensaje = "📺 ¡Buen comienzo! Tu colección va tomando forma.";
-        else mensaje = "✨ ¡Añade tu primera serie para empezar tu maratón!";
+        if (topGenero === '-') {
+            mensaje = "🔄 Sincronizando géneros de tu colección... (aparecerán en unos segundos)";
+        } else if (totalEpisodiosVistos > 500) {
+            mensaje = `🏆 ¡<strong>${horasTotales} horas</strong> de maratón! Género mas visto: <strong>${topGenero}</strong>`;
+        } else if (totalEpisodiosVistos > 100) {
+            mensaje = `🍿 ¡${totalEpisodiosVistos} episodios! Género mas visto: <strong>${topGenero}</strong>`;
+        } else {
+            mensaje = `📺 Tu colección va tomando forma. Género mas visto: <strong>${topGenero}</strong>`;
+        }
 
         document.getElementById('statsMessage').innerHTML = mensaje;
         document.getElementById('statsContainer').classList.remove('hidden');
@@ -317,9 +368,10 @@ async function verificarNovedades(series) {
 
     // Verificamos todas las series que no estén ya marcadas como Finalizadas/Canceladas en TMDB
     // o que tengan episodios pendientes de emitir.
+    // Verificamos series para ver si hay nuevos episodios O si les faltan metadatos (géneros/duración)
     const seriesAVerificar = series.filter(s =>
-        s.tmdb_status !== 'Finalizada' &&
-        s.tmdb_status !== 'Cancelada'
+        (s.tmdb_status !== 'Finalizada' && s.tmdb_status !== 'Cancelada') ||
+        (!s.generos || !s.duracion_media)
     );
 
     let cambiosDetectados = false;
@@ -344,6 +396,12 @@ async function verificarNovedades(series) {
             };
             const rawStatus = fullData.status;
             const currentTmdbStatus = statusMap[rawStatus] || rawStatus;
+
+            // Aprovechar para rellenar géneros y duración si faltan (para series viejas)
+            const generos = fullData.genres ? fullData.genres.map(g => g.name).join(', ') : '';
+            const duracion = fullData.episode_run_time && fullData.episode_run_time.length > 0
+                ? Math.round(fullData.episode_run_time.reduce((a, b) => a + b, 0) / fullData.episode_run_time.length)
+                : 45;
 
             console.log(`[Sync] Verificando "${serie.titulo}" (ID: ${serie.tmdb_id}). API Status: "${rawStatus}" -> "${currentTmdbStatus}"`);
 
@@ -388,7 +446,9 @@ async function verificarNovedades(series) {
                 await pb.collection(window.CONFIG.COLLECTION_NAME).update(serie.id, {
                     estado: nuevoEstadoInterno,
                     total_episodios: totalAired,
-                    tmdb_status: finalTmdbStatus
+                    tmdb_status: finalTmdbStatus,
+                    generos: serie.generos || generos,
+                    duracion_media: serie.duracion_media || duracion
                 });
 
                 if (pasaAVista) {
@@ -439,18 +499,52 @@ async function buscarSeries() {
         });
         const idsEnColeccion = new Set(misSeries.map(s => String(s.tmdb_id)));
 
-        const url = `https://api.themoviedb.org/3/search/tv?api_key=${API_KEY}&query=${encodeURIComponent(query)}&language=es-ES`;
-        const response = await fetch(url);
-        const data = await response.json();
+        let results = [];
+
+        // Si la búsqueda es un número, intentamos buscar directamente por ID
+        if (/^\d+$/.test(query.trim())) {
+            const idToSearch = query.trim();
+
+            // 1. Intentar como TMDB ID (estándar)
+            const urlId = `https://api.themoviedb.org/3/tv/${idToSearch}?api_key=${API_KEY}&language=es-ES`;
+            const responseId = await fetch(urlId);
+
+            if (responseId.ok) {
+                const seriePorId = await responseId.json();
+                results = [seriePorId];
+            } else {
+                // 2. Si falla, intentar como TVDB ID (usando el endpoint /find)
+                console.log("[Search] No encontrado como TMDB ID, probando como TVDB ID...");
+                const urlFind = `https://api.themoviedb.org/3/find/${idToSearch}?api_key=${API_KEY}&external_source=tvdb_id&language=es-ES`;
+                const responseFind = await fetch(urlFind);
+                const dataFind = await responseFind.json();
+
+                if (dataFind.tv_results && dataFind.tv_results.length > 0) {
+                    results = dataFind.tv_results;
+                } else {
+                    // 3. Si sigue fallando, intentar búsqueda normal por si el número fuera parte de un título
+                    const urlSearch = `https://api.themoviedb.org/3/search/tv?api_key=${API_KEY}&query=${encodeURIComponent(query)}&language=es-ES`;
+                    const responseSearch = await fetch(urlSearch);
+                    const dataSearch = await responseSearch.json();
+                    results = dataSearch.results;
+                }
+            }
+        } else {
+            // Búsqueda normal por título
+            const urlSearch = `https://api.themoviedb.org/3/search/tv?api_key=${API_KEY}&query=${encodeURIComponent(query)}&language=es-ES`;
+            const responseSearch = await fetch(urlSearch);
+            const dataSearch = await responseSearch.json();
+            results = dataSearch.results;
+        }
 
         resultsDiv.innerHTML = ''; // Limpiar mensaje de carga
 
-        if (data.results.length === 0) {
+        if (results.length === 0) {
             resultsDiv.innerHTML = '<p>No se encontraron series.</p>';
             return;
         }
 
-        data.results.forEach(serie => {
+        results.forEach(serie => {
             const yaEnLista = idsEnColeccion.has(String(serie.id));
             const poster = serie.poster_path
                 ? `https://image.tmdb.org/t/p/w500${serie.poster_path}`
@@ -972,6 +1066,12 @@ async function seleccionarSerie(serie) {
         const tmdbStatusText = statusMap[fullData.status]?.text || fullData.status;
         const totalOficial = await obtenerTotalEpisodios(fullData.seasons, tmdbId);
 
+        // Extraer géneros y duración media
+        const generos = fullData.genres ? fullData.genres.map(g => g.name).join(', ') : '';
+        const duracion = fullData.episode_run_time && fullData.episode_run_time.length > 0
+            ? Math.round(fullData.episode_run_time.reduce((a, b) => a + b, 0) / fullData.episode_run_time.length)
+            : 45; // 45 min por defecto si no hay dato
+
         const datosParaPB = {
             titulo: titulo,
             tmdb_id: tmdbId,
@@ -982,6 +1082,8 @@ async function seleccionarSerie(serie) {
             estado: 'Pendiente',
             tmdb_status: tmdbStatusText,
             total_episodios: totalOficial,
+            generos: generos,
+            duracion_media: duracion,
             vistos: {},
             user: userModel.id
         };
