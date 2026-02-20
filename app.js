@@ -42,6 +42,7 @@ function updateAuthUI() {
         // Ocultar todas las secciones si no hay login
         document.getElementById('sectionPendiente').classList.add('hidden');
         document.getElementById('sectionViendo').classList.add('hidden');
+        document.getElementById('sectionAlDia').classList.add('hidden');
         document.getElementById('sectionVista').classList.add('hidden');
     }
 }
@@ -111,12 +112,39 @@ async function solicitarReseteo() {
     }
 }
 
-// Función auxiliar para unificar el conteo de episodios oficiales
-function obtenerTotalEpisodios(seasons) {
-    if (!seasons) return 0;
-    return seasons
-        .filter(s => s.season_number > 0 && !['especiales', 'specials', 'extras', 'especial'].includes(s.name.toLowerCase()))
-        .reduce((acc, s) => acc + s.episode_count, 0);
+// Función auxiliar para unificar el conteo de episodios oficiales ya emitidos
+async function obtenerTotalEpisodios(seasons, tmdbId) {
+    if (!seasons || !tmdbId) return 0;
+    const hoy = new Date();
+
+    // Filtramos las temporadas que nos interesan
+    const temporadasFiltradas = seasons.filter(s =>
+        s.season_number > 0 &&
+        !['especiales', 'specials', 'extras', 'especial'].includes(s.name.toLowerCase())
+    );
+
+    try {
+        // Lanzamos todas las peticiones en paralelo
+        const promises = temporadasFiltradas.map(s =>
+            fetch(`https://api.themoviedb.org/3/tv/${tmdbId}/season/${s.season_number}?api_key=${API_KEY}&language=es-ES`)
+                .then(res => res.json())
+        );
+
+        const seasonsData = await Promise.all(promises);
+
+        let totalEmitidos = 0;
+        seasonsData.forEach(sData => {
+            if (sData.episodes) {
+                const emitidos = sData.episodes.filter(ep => ep.air_date && new Date(ep.air_date) <= hoy).length;
+                totalEmitidos += emitidos;
+            }
+        });
+        return totalEmitidos;
+    } catch (e) {
+        console.error("Error contando episodios emitidos:", e);
+        // Fallback al conteo básico si falla la red
+        return temporadasFiltradas.reduce((acc, s) => acc + s.episode_count, 0);
+    }
 }
 
 function mostrarAvisoGuardado(texto) {
@@ -144,10 +172,11 @@ async function cargarMisSeries() {
 
     const gridPendiente = document.getElementById('gridPendiente');
     const gridViendo = document.getElementById('gridViendo');
+    const gridAlDia = document.getElementById('gridAlDia');
     const gridVista = document.getElementById('gridVista');
 
     // Limpiar y ocultar secciones inicialmente
-    [gridPendiente, gridViendo, gridVista].forEach(g => {
+    [gridPendiente, gridViendo, gridAlDia, gridVista].forEach(g => {
         g.innerHTML = '';
         g.parentElement.classList.add('hidden');
     });
@@ -163,7 +192,7 @@ async function cargarMisSeries() {
         records.forEach(serie => {
             const year = serie.fecha_estreno ? serie.fecha_estreno.split('-')[0] : 'Sin fecha';
             const estado = serie.estado || 'Pendiente';
-            const statusClass = 'status-' + estado.toLowerCase();
+            const statusClass = 'status-' + estado.toLowerCase().replace(' ', '').replace('í', 'i');
 
             const tmdbStatusText = serie.tmdb_status || '';
             let tmdbClass = 'ended';
@@ -193,6 +222,9 @@ async function cargarMisSeries() {
             } else if (estado === 'Viendo') {
                 gridViendo.appendChild(card);
                 gridViendo.parentElement.classList.remove('hidden');
+            } else if (estado === 'Al día') {
+                gridAlDia.appendChild(card);
+                gridAlDia.parentElement.classList.remove('hidden');
             } else if (estado === 'Vista') {
                 gridVista.appendChild(card);
                 gridVista.parentElement.classList.remove('hidden');
@@ -307,13 +339,26 @@ async function mostrarDetalle(serie, esDeColeccion) {
 
         let seasonsHtml = '';
         if (fullData.seasons && fullData.seasons.length > 0) {
-            const totalOficial = obtenerTotalEpisodios(fullData.seasons);
-            serieActual.total_episodios = totalOficial;
-
             const seasonsOficiales = fullData.seasons.filter(s =>
                 s.season_number > 0 &&
                 !['especiales', 'specials', 'extras', 'especial'].includes(s.name.toLowerCase())
             );
+
+            // ÚNICA ráfaga de peticiones para toda la información de la serie
+            const seasonsDataPromises = seasonsOficiales.map(s =>
+                fetch(`https://api.themoviedb.org/3/tv/${tmdbId}/season/${s.season_number}?api_key=${API_KEY}&language=es-ES`).then(r => r.json())
+            );
+            const seasonsData = await Promise.all(seasonsDataPromises);
+
+            // Calculamos totalEmitidos reutilizando los datos ya descargados
+            const hoy = new Date();
+            let totalEmitidos = 0;
+            seasonsData.forEach(sData => {
+                if (sData.episodes) {
+                    totalEmitidos += sData.episodes.filter(ep => ep.air_date && new Date(ep.air_date) <= hoy).length;
+                }
+            });
+            serieActual.total_episodios = totalEmitidos;
 
             if (esDeColeccion && serieActual.estado === 'Vista') {
                 // Vista Compacta para series ya terminadas
@@ -321,7 +366,7 @@ async function mostrarDetalle(serie, esDeColeccion) {
                     <div class="seasons-container">
                         <div class="seasons-title">📊 Resumen de la serie</div>
                         <div style="margin-bottom: 20px; color: #94a3b8;">
-                            Temporadas: <strong>${seasonsOficiales.length}</strong> Episodios: <strong>${totalOficial}</strong>
+                            Temporadas: <strong>${seasonsOficiales.length}</strong> Episodios: <strong>${totalEmitidos}</strong>
                         </div>
                         ${serieActual.rated ? `
                             <div class="finished-info" style="background: rgba(99, 102, 241, 0.1); border-color: var(--primary);">
@@ -335,38 +380,45 @@ async function mostrarDetalle(serie, esDeColeccion) {
                         `}
                     </div>
                 `;
-            } else {
-                // Vista Detallada (Búsqueda o serie en curso)
+            } else if (esDeColeccion) {
+                // Vista Detallada
                 seasonsHtml = `
                     <div class="seasons-container">
                         <div class="seasons-title">📂 Temporadas y Episodios</div>
-                        ${seasonsOficiales.map(s => {
-                    const sKey = String(s.season_number);
+                        ${seasonsData.map(sData => {
+                    const sNum = sData.season_number;
+                    const sKey = String(sNum);
                     const seasonVistos = serieActual.vistos[sKey] || [];
-                    const isAllWatched = seasonVistos.length === s.episode_count;
-                    let epsButtons = '';
-                    for (let i = 1; i <= s.episode_count; i++) {
+
+                    // Filtrar solo episodios ya emitidos
+                    const episodiosEmitidos = sData.episodes.filter(ep => ep.air_date && new Date(ep.air_date) <= hoy);
+                    if (episodiosEmitidos.length === 0) return ''; // No mostrar temporada si no hay episodios emitidos
+
+                    const isAllWatched = seasonVistos.length === episodiosEmitidos.length;
+
+                    let epsButtons = episodiosEmitidos.map(ep => {
+                        const i = ep.episode_number;
                         const isWatched = seasonVistos.includes(i);
-                        epsButtons += `
-                                    <div class="episode-btn ${isWatched ? 'watched' : ''} ${!esDeColeccion ? 'disabled' : ''}"
-                                         onclick="${esDeColeccion ? `marcarEpisodio(${s.season_number}, ${i}, this)` : ''}"
-                                         title="Episodio ${i}">
+                        return `
+                                    <div class="episode-btn ${isWatched ? 'watched' : ''}"
+                                         onclick="marcarEpisodio(${sNum}, ${i}, this)"
+                                         title="Episodio ${i} (${ep.air_date})">
                                         ${i}
                                     </div>`;
-                    }
+                    }).join('');
 
                     return `
                                 <div class="season-item">
                                     <div class="season-header">
                                         <div class="season-name-container">
-                                            <span class="season-name">${s.name}</span>
-                                            ${esDeColeccion ? `<input type="checkbox" class="season-checkbox" ${isAllWatched ? 'checked' : ''} 
-                                                                 onchange="marcarTemporada(${s.season_number}, ${s.episode_count}, this)" 
-                                                                 title="Marcar temporada completa">` : ''}
+                                            <span class="season-name">${sData.name}</span>
+                                            <input type="checkbox" class="season-checkbox" ${isAllWatched ? 'checked' : ''}
+                                                     onchange="marcarTemporada(${sNum}, ${episodiosEmitidos.length}, this)"
+                                                     title="Marcar temporada completa">
                                         </div>
-                                        <span class="episode-count">${s.episode_count} episodios</span>
+                                        <span class="episode-count">${episodiosEmitidos.length} episodios</span>
                                     </div>
-                                    <div class="episodes-grid" id="grid-s${s.season_number}">${epsButtons}</div>
+                                    <div class="episodes-grid" id="grid-s${sNum}">${epsButtons}</div>
                                 </div>
                             `;
                 }).join('')}
@@ -388,8 +440,10 @@ async function mostrarDetalle(serie, esDeColeccion) {
                     <span class="tmdb-status-badge tmdb-status-${tmdbStatus.class}">${tmdbStatus.text}</span>
                 </div>
                 <div class="detail-synopsis">${sinopsis}</div>
-                ${!esDeColeccion ? `<button onclick='event.stopPropagation(); seleccionarSerie(${JSON.stringify(serieActual).replace(/'/g, "&apos;")})'>＋ Añadir a mi lista</button>` : `<span class="status-badge status-${(serieActual.estado || 'pendiente').toLowerCase()}">${serieActual.estado || 'Pendiente'}</span>`}
-                
+                ${!esDeColeccion ?
+                `<button onclick='event.stopPropagation(); seleccionarSerie(${JSON.stringify(serieActual).replace(/'/g, "&apos;")})'>＋ Añadir a mi lista</button>` :
+                `<span class="status-badge status-${(serieActual.estado || 'pendiente').toLowerCase().replace(' ', '').replace('í', 'i')}">${(serieActual.estado || 'Pendiente').toUpperCase()}</span>`
+            }
                 ${esDeColeccion && serieActual.estado !== 'Vista' && serieActual.rated ? `
                     <div class="finished-info">
                         <div class="stars">${'★'.repeat(serieActual.rated)}${'☆'.repeat(5 - serieActual.rated)}</div>
@@ -459,21 +513,36 @@ function actualizarEstadoGlobal() {
 
     let nuevoEstado = 'Pendiente';
     const totalEpisodios = serieActual.total_episodios || 0;
+    const tStatus = (serieActual.tmdb_status || '').toLowerCase();
+
     if (totalVistos > 0) {
-        nuevoEstado = (totalVistos >= totalEpisodios) ? 'Vista' : 'Viendo';
+        if (totalVistos >= totalEpisodios) {
+            // Lógica de finalización vs al día
+            if (tStatus === 'finalizada' || tStatus === 'cancelada') {
+                nuevoEstado = 'Vista';
+            } else {
+                nuevoEstado = 'Al día';
+            }
+        } else {
+            nuevoEstado = 'Viendo';
+        }
     }
 
+    // Si acaba de terminar por completo (pasa a Vista)
     const acabaDeTerminar = nuevoEstado === 'Vista' && serieActual.estado !== 'Vista';
+
     serieActual.estado = nuevoEstado;
 
     const statusBadge = document.querySelector('#detailBody .status-badge');
     if (statusBadge) {
-        statusBadge.innerText = nuevoEstado.toUpperCase();
-        statusBadge.className = `status-badge status-${nuevoEstado.toLowerCase()}`;
+        let displayState = nuevoEstado.toUpperCase();
+        statusBadge.innerText = displayState;
+        const stateClass = nuevoEstado.toLowerCase().replace(' ', '').replace('í', 'i');
+        statusBadge.className = `status-badge status-${stateClass}`;
     }
 
     if (acabaDeTerminar) {
-        window._acabaDeTerminar = true; // Flag temporal
+        window._acabaDeTerminar = true; // Flag temporal para el modal
     }
 }
 
@@ -573,6 +642,24 @@ async function seleccionarSerie(serie) {
 
     try {
         const tmdbId = serie.id || serie.tmdb_id;
+
+        // VERIFICACIÓN DE DUPLICADOS
+        const existe = await pb.collection(window.CONFIG.COLLECTION_NAME).getList(1, 1, {
+            filter: `user = "${userModel.id}" && tmdb_id = "${tmdbId}"`
+        });
+
+        if (existe.totalItems > 0) {
+            alert(`⚠️ "${titulo}" ya está en tu lista.`);
+
+            // Limpiar búsqueda
+            document.getElementById('searchResultsSection').classList.add('hidden');
+            document.getElementById('searchInput').value = '';
+            document.getElementById('results').innerHTML = '';
+
+            cerrarDetalle();
+            return;
+        }
+
         const tmdbRes = await fetch(`https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${API_KEY}&language=es-ES`);
         const fullData = await tmdbRes.json();
 
@@ -585,7 +672,7 @@ async function seleccionarSerie(serie) {
             'Pilot': { text: 'Piloto' }
         };
         const tmdbStatusText = statusMap[fullData.status]?.text || fullData.status;
-        const totalOficial = obtenerTotalEpisodios(fullData.seasons);
+        const totalOficial = await obtenerTotalEpisodios(fullData.seasons, tmdbId);
 
         const datosParaPB = {
             titulo: titulo,

@@ -30,21 +30,37 @@ self.addEventListener('activate', event => {
     );
 });
 
-// Estrategia Network-First con fallback a Cache
+// Estrategia diferenciada para mayor velocidad
 self.addEventListener('fetch', event => {
-    // Solo cachear peticiones GET
     if (event.request.method !== 'GET') return;
 
-    event.respondWith(
-        fetch(event.request)
-            .then(response => {
-                // Clonar la respuesta para guardarla en cache
-                const resClone = response.clone();
-                caches.open(CACHE_NAME).then(cache => {
-                    cache.put(event.request, resClone);
-                });
-                return response;
-            })
-            .catch(() => caches.match(event.request))
-    );
+    const url = new URL(event.request.url); // Use URL constructor for proper parsing
+    const isApi = url.host.includes('api.themoviedb.org') || url.host.includes('martiperpocketbase');
+
+    if (isApi) {
+        // ESTRATEGIA: NETWORK FIRST para datos (queremos info fresca)
+        event.respondWith(
+            fetch(event.request)
+                .then(response => {
+                    const resClone = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, resClone));
+                    return response;
+                })
+                .catch(() => caches.match(event.request))
+        );
+    } else {
+        // ESTRATEGIA: CACHE FIRST para activos (arranque instantáneo)
+        event.respondWith(
+            caches.match(event.request)
+                .then(cachedResponse => {
+                    if (cachedResponse) return cachedResponse;
+
+                    return fetch(event.request).then(response => {
+                        const resClone = response.clone();
+                        caches.open(CACHE_NAME).then(cache => cache.put(event.request, resClone));
+                        return response;
+                    });
+                })
+        );
+    }
 });
