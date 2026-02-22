@@ -764,10 +764,9 @@ async function mostrarDetalle(serie, esDeColeccion) {
                     <span>⭐ <span class="rating-badge">${puntuacion}</span></span>
                     <span class="tmdb-status-badge tmdb-status-${tmdbStatus.class}">${tmdbStatus.text}</span>
                     ${esDeColeccion ? (
-                serieActual.tmdb_status === 'Finalizada' && fullData.status === 'Returning Series' ?
-                    `<a href="javascript:void(0)" onclick="revertirFinalizacion()" class="force-end-link" style="color: #ef4444;">¿No ha finalizado?</a>` :
-                    (tmdbStatus.text !== 'Finalizada' && tmdbStatus.text !== 'Cancelada' ?
-                        `<a href="javascript:void(0)" onclick="forzarFinalizacion()" class="force-end-link">¿Ha finalizado?</a>` : '')
+                serieActual.estado === 'Vista' ?
+                    `<a href="javascript:void(0)" onclick="revertirFinalizacion()" class="force-end-link" style="color: #ef4444;">¿No ha terminado?</a>` :
+                    `<a href="javascript:void(0)" onclick="forzarFinalizacion()" class="force-end-link">¿Ha terminado?</a>`
             ) : ''}
                 </div>
                 <div class="detail-synopsis">${sinopsis}</div>
