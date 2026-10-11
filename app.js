@@ -1189,8 +1189,27 @@ async function guardarFinalizacion() {
     }
 }
 
+// Restaurar y renovar la sesión guardada antes de cargar la colección.
+async function inicializarApp() {
+    if (pb.authStore.token) {
+        try {
+            await pb.collection('users').authRefresh();
+        } catch (error) {
+            // No borrar la sesión por un fallo temporal de red; solo si PocketBase
+            // confirma que el token ya no es válido.
+            if (error.status === 401 || error.status === 403) {
+                pb.authStore.clear();
+            } else {
+                console.warn('[Auth] No se pudo renovar la sesión; se conserva el token local.', error);
+            }
+        }
+    }
+
+    updateAuthUI();
+}
+
 // Ejecutar al cargar
-updateAuthUI();
+inicializarApp();
 initStars();
 
 // Permitir buscar pulsando Enter
