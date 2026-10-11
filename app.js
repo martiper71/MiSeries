@@ -16,6 +16,28 @@ let serieActual = null; // Estado de la serie abierta
 let syncQueue = Promise.resolve(); // Cola de promesas secuencial
 let pendingRecords = 0; // Contador de peticiones activas
 let ratingSeleccionado = 0;
+let seccionColeccionActiva = 'Pendiente';
+let primeraCargaColeccion = true;
+
+const seccionesColeccion = {
+    'Pendiente': { section: 'sectionPendiente', tab: 'tabPendiente', count: 'countPendiente', grid: 'gridPendiente' },
+    'Viendo': { section: 'sectionViendo', tab: 'tabViendo', count: 'countViendo', grid: 'gridViendo' },
+    'Al día': { section: 'sectionAlDia', tab: 'tabAlDia', count: 'countAlDia', grid: 'gridAlDia' },
+    'Vista': { section: 'sectionVista', tab: 'tabVista', count: 'countVista', grid: 'gridVista' }
+};
+
+function seleccionarSeccion(estado) {
+    if (!seccionesColeccion[estado]) return;
+    seccionColeccionActiva = estado;
+
+    Object.entries(seccionesColeccion).forEach(([nombre, elementos]) => {
+        const activa = nombre === estado;
+        document.getElementById(elementos.tab).classList.toggle('active', activa);
+        document.getElementById(elementos.tab).setAttribute('aria-selected', String(activa));
+        document.getElementById(elementos.tab).tabIndex = activa ? 0 : -1;
+        document.getElementById(elementos.section).classList.toggle('hidden', !activa);
+    });
+}
 
 function initStars() {
     const stars = document.querySelectorAll('.star');
@@ -38,6 +60,8 @@ function updateAuthUI() {
     if (isLogged) {
         cargarMisSeries();
     } else {
+        document.getElementById('collectionTabs').classList.add('hidden');
+        primeraCargaColeccion = true;
         // Ocultar todas las secciones si no hay login
         document.getElementById('sectionPendiente').classList.add('hidden');
         document.getElementById('sectionViendo').classList.add('hidden');
@@ -220,16 +244,14 @@ function mostrarAvisoGuardado(texto) {
 async function cargarMisSeries() {
     if (!pb.authStore.isValid) return;
 
-    const gridPendiente = document.getElementById('gridPendiente');
-    const gridViendo = document.getElementById('gridViendo');
-    const gridAlDia = document.getElementById('gridAlDia');
-    const gridVista = document.getElementById('gridVista');
-
     // Limpiar y ocultar secciones inicialmente
-    [gridPendiente, gridViendo, gridAlDia, gridVista].forEach(g => {
+    Object.values(seccionesColeccion).forEach(({ grid, section }) => {
+        const g = document.getElementById(grid);
         g.innerHTML = '';
-        g.parentElement.classList.add('hidden');
+        document.getElementById(section).classList.add('hidden');
+        document.querySelector(`#${section} .empty-collection`).classList.add('hidden');
     });
+    document.getElementById('collectionTabs').classList.add('hidden');
 
     try {
         const records = await pb.collection(window.CONFIG.COLLECTION_NAME).getFullList({
@@ -239,8 +261,23 @@ async function cargarMisSeries() {
 
         if (records.length === 0) {
             document.getElementById('statsContainer').classList.add('hidden');
+            primeraCargaColeccion = true;
             return;
         }
+
+        const conteos = { 'Pendiente': 0, 'Viendo': 0, 'Al día': 0, 'Vista': 0 };
+        records.forEach(serie => {
+            const estado = seccionesColeccion[serie.estado] ? serie.estado : 'Pendiente';
+            conteos[estado]++;
+        });
+        Object.entries(seccionesColeccion).forEach(([estado, elementos]) => {
+            document.getElementById(elementos.count).textContent = conteos[estado];
+        });
+        if (primeraCargaColeccion) {
+            seccionColeccionActiva = Object.keys(conteos).find(estado => conteos[estado] > 0) || 'Pendiente';
+            primeraCargaColeccion = false;
+        }
+        document.getElementById('collectionTabs').classList.remove('hidden');
 
         let totalEpisodiosVistos = 0;
         let totalCompletadas = 0;
@@ -307,20 +344,15 @@ async function cargarMisSeries() {
             `;
 
             // Mandar a su grid correspondiente
-            if (estado === 'Pendiente') {
-                gridPendiente.appendChild(card);
-                gridPendiente.parentElement.classList.remove('hidden');
-            } else if (estado === 'Viendo') {
-                gridViendo.appendChild(card);
-                gridViendo.parentElement.classList.remove('hidden');
-            } else if (estado === 'Al día') {
-                gridAlDia.appendChild(card);
-                gridAlDia.parentElement.classList.remove('hidden');
-            } else if (estado === 'Vista') {
-                gridVista.appendChild(card);
-                gridVista.parentElement.classList.remove('hidden');
-            }
+            const seccion = seccionesColeccion[estado] || seccionesColeccion['Pendiente'];
+            document.getElementById(seccion.grid).appendChild(card);
         });
+
+        Object.values(seccionesColeccion).forEach(({ section, grid }) => {
+            const lista = document.getElementById(grid);
+            document.querySelector(`#${section} .empty-collection`).classList.toggle('hidden', lista.children.length > 0);
+        });
+        seleccionarSeccion(seccionColeccionActiva);
 
         // Actualizar Estadísticas
         document.getElementById('statSeries').innerText = records.length;

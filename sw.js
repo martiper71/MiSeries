@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mis-series-v3';
+const CACHE_NAME = 'mis-series-v4';
 const ASSETS = [
     './',
     './index.html',

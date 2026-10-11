@@ -122,24 +122,43 @@
     </div>
 
     <div id="coleccionSecciones">
-        <div id="sectionPendiente" class="hidden">
+        <nav id="collectionTabs" class="collection-tabs hidden" role="tablist" aria-label="Secciones de mi colección">
+            <button id="tabPendiente" class="collection-tab" type="button" role="tab" aria-controls="sectionPendiente" onclick="seleccionarSeccion('Pendiente')">
+                <span class="tab-label">Pendientes</span><span class="tab-count" id="countPendiente">0</span>
+            </button>
+            <button id="tabViendo" class="collection-tab" type="button" role="tab" aria-controls="sectionViendo" onclick="seleccionarSeccion('Viendo')">
+                <span class="tab-label">Viendo</span><span class="tab-count" id="countViendo">0</span>
+            </button>
+            <button id="tabAlDia" class="collection-tab" type="button" role="tab" aria-controls="sectionAlDia" onclick="seleccionarSeccion('Al día')">
+                <span class="tab-label">Al día</span><span class="tab-count" id="countAlDia">0</span>
+            </button>
+            <button id="tabVista" class="collection-tab" type="button" role="tab" aria-controls="sectionVista" onclick="seleccionarSeccion('Vista')">
+                <span class="tab-label">Vistas</span><span class="tab-count" id="countVista">0</span>
+            </button>
+        </nav>
+
+        <div id="sectionPendiente" class="collection-section hidden" role="tabpanel" aria-labelledby="tabPendiente" tabindex="0">
             <h2 class="section-title pendiente">⏳ Pendientes</h2>
             <div id="gridPendiente" class="results-grid"></div>
+            <p class="empty-collection hidden">No tienes series pendientes.</p>
         </div>
 
-        <div id="sectionViendo" class="hidden">
+        <div id="sectionViendo" class="collection-section hidden" role="tabpanel" aria-labelledby="tabViendo" tabindex="0">
             <h2 class="section-title viendo">📺 Viendo</h2>
             <div id="gridViendo" class="results-grid"></div>
+            <p class="empty-collection hidden">No tienes series en curso.</p>
         </div>
 
-        <div id="sectionAlDia" class="hidden">
+        <div id="sectionAlDia" class="collection-section hidden" role="tabpanel" aria-labelledby="tabAlDia" tabindex="0">
             <h2 class="section-title aldia">👍 Al día</h2>
             <div id="gridAlDia" class="results-grid"></div>
+            <p class="empty-collection hidden">No tienes series al día.</p>
         </div>
 
-        <div id="sectionVista" class="hidden">
+        <div id="sectionVista" class="collection-section hidden" role="tabpanel" aria-labelledby="tabVista" tabindex="0">
             <h2 class="section-title vista">✅ Vistas</h2>
             <div id="gridVista" class="results-grid"></div>
+            <p class="empty-collection hidden">Todavía no has terminado ninguna serie.</p>
         </div>
     </div>
 
