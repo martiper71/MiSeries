@@ -88,9 +88,7 @@ h1 {
 }
 
 .collection-tabs {
-    position: sticky;
-    top: env(safe-area-inset-top, 0px);
-    z-index: 20;
+    position: static;
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
@@ -839,7 +837,17 @@ button:active {
     }
 
     .detail-poster {
-        width: 200px;
+        width: min(200px, 70vw);
+        max-width: 100%;
+        height: auto;
+        aspect-ratio: 2 / 3;
+        object-fit: contain;
+    }
+
+    .card img {
+        height: auto;
+        aspect-ratio: 2 / 3;
+        object-fit: contain;
     }
 
     .detail-meta {
